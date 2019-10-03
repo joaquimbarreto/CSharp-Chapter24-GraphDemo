@@ -9,6 +9,7 @@ using Windows.UI.Xaml.Navigation;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
 using System.Threading;
+using Windows.UI.Popups;
 
 // The Blank Page item template is documented at http://go.microsoft.com/fwlink/?LinkId=402352&clcid=0x409
 
@@ -48,34 +49,55 @@ namespace GraphDemo
             }
         }
 
-        private void plotButton_Click(object sender, RoutedEventArgs e)
+        private async void plotButton_Click(object sender, RoutedEventArgs e)
         {
-            Random rand = new Random();
-            redValue = (byte)rand.Next(0xFF);
-            greenValue = (byte)rand.Next(0xFF);
-            blueValue = (byte)rand.Next(0xFF);
-
-            tokenSource = new CancellationTokenSource();
-            CancellationToken token = tokenSource.Token;
-
-            Stopwatch watch = Stopwatch.StartNew();
-
             try
             {
-                generateGraphData(data, 0, pixelWidth / 2, token);
+
+                Random rand = new Random();
+                redValue = (byte)rand.Next(0xFF);
+                greenValue = (byte)rand.Next(0xFF);
+                blueValue = (byte)rand.Next(0xFF);
+
+                tokenSource = new CancellationTokenSource();
+                CancellationToken token = tokenSource.Token;
+
+                Stopwatch watch = Stopwatch.StartNew();
+
+                try
+                {
+                    await generateGraphDataAsync(data, 0, pixelWidth / 2, token);
+                    duration.Text = $"Duration (ms): {watch.ElapsedMilliseconds}";
+                }
+
+                catch (OperationCanceledException oce)
+                {
+                    duration.Text = oce.Message;
+                }
                 duration.Text = $"Duration (ms): {watch.ElapsedMilliseconds}";
-            }
 
-            catch (OperationCanceledException oce)
+                WriteableBitmap graphBitmap = new WriteableBitmap(pixelWidth, pixelHeight);
+
+                using (Stream pixelStream = graphBitmap.PixelBuffer.AsStream())
+                {
+                    pixelStream.Seek(0, SeekOrigin.Begin);
+                    pixelStream.Write(data, 0, data.Length);
+                    graphBitmap.Invalidate();
+                    graphImage.Source = graphBitmap;
+                }
+            }
+            catch (Exception ex)
             {
-                duration.Text = oce.Message;
+                MessageDialog msg = new MessageDialog("Expection", ex.Message);
+                msg.ShowAsync();
             }
 
-            Stream pixelStream = graphBitmap.PixelBuffer.AsStream();
-            pixelStream.Seek(0, SeekOrigin.Begin);
-            pixelStream.Write(data, 0, data.Length);
-            graphBitmap.Invalidate();
-            graphImage.Source = graphBitmap;
+        }
+
+        private async Task generateGraphDataAsync(byte[] data, int partitionStart, int partitionEnd, CancellationToken token)
+        {
+            Task task = Task.Run(() => generateGraphData(data, partitionStart, partitionEnd, token));
+            await task;
         }
 
         private void generateGraphData(byte[] data, int partitionStart, int partitionEnd, CancellationToken token)
